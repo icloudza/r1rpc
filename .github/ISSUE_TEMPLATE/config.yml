@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞报告
+    url: https://github.com/icloudza/r1rpc/security/advisories/new
+    about: 请勿公开提交安全漏洞，点此走私密报告流程。
+  - name: 使用提问 / 讨论
+    url: https://github.com/icloudza/r1rpc/discussions
+    about: 用法疑问、方案讨论请到 Discussions（若已开启）。

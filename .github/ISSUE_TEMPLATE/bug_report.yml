@@ -1,0 +1,46 @@
+name: Bug 报告
+description: 报告一个可复现的问题
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量填全信息，便于快速定位。
+        ⚠️ 安全漏洞请勿在此提交，改走 SECURITY.md 的私密报告。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 发生了什么？预期是什么？
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 一步步怎么触发的
+      placeholder: |
+        1. 启动 ...
+        2. 调用 POST /rpc/{group}/{action} ...
+        3. 观察到 ...
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境
+      description: 版本与部署方式
+      value: |
+        - r1rpc 版本 / commit:
+        - 部署方式: Docker / 源码 / 二进制
+        - Go 版本:
+        - MySQL 版本:
+        - 操作系统:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志 / 报错
+      description: 服务端日志、调用返回体等（注意脱敏，勿粘贴真实密钥/Token）
+      render: shell
