@@ -24,10 +24,10 @@ for arg in "$@"; do
     --arch=*)     ARCH="${arg#*=}" ;;
     --skip-web)   SKIP_WEB=1 ;;
     -h|--help)    sed -n '2,16p' "$0"; exit 0 ;;
-    *) echo "未知参数: $arg（用法见 --help）" >&2; exit 1 ;;
+    *) echo "未知参数: ${arg}（用法见 --help）" >&2; exit 1 ;;
   esac
 done
-case "$ARCH" in amd64|arm64) ;; *) echo "不支持的架构: $ARCH（仅 amd64 / arm64）" >&2; exit 1 ;; esac
+case "$ARCH" in amd64|arm64) ;; *) echo "不支持的架构: ${ARCH}（仅 amd64 / arm64）" >&2; exit 1 ;; esac
 
 OUT="$ROOT/dist"
 BIN="r1rpc-linux-$ARCH"
@@ -52,7 +52,7 @@ GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 \
 echo "    $(file "$OUT/$BIN" | sed "s#$OUT/##")"
 echo "    大小: $(du -h "$OUT/$BIN" | cut -f1)"
 
-echo "==> [4/4] 打包 $TARBALL（二进制 + 配置模板 + systemd 单元）"
+echo "==> [4/4] 打包 ${TARBALL}（二进制 + 配置模板 + systemd 单元）"
 # 配置模板
 [[ -f "$ROOT/config.example.yaml" ]] && cp "$ROOT/config.example.yaml" "$OUT/config.yaml"
 # systemd 单元（ExecStart 对应本次架构的二进制名）
