@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  r1rpc 设备端 —— iOS 越狱 launchd LaunchDaemon 常驻（rootless，路径在 /var/jb 下）
+    scp r1rpc-device-ios.plist root@设备IP:/var/jb/Library/LaunchDaemons/cc.example.r1rpc-device.plist
+    ssh root@设备IP 'launchctl load -w /var/jb/Library/LaunchDaemons/cc.example.r1rpc-device.plist'
+
+  关键坑（务必看 deploy/README.md）：
+  1. frida 类客户端必须经 `zsh -lc` 登录 shell 启动 —— launchd 直接 spawn 的进程拿不到越狱
+     注入上下文，frida 初始化即崩。下面 ProgramArguments 已用 zsh 包了一层。
+     纯 python（不注入 App）的客户端可不经 shell，直接写 python3 路径与参数。
+  2. rootless 越狱需 POSIXSpawnType=Interactive + ExecuteAllowed=true（同 frida-server 的 plist）。
+  3. 日志默认丢到 /dev/null，否则每次调用的结果输出会撑爆设备存储。
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>cc.example.r1rpc-device</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/var/jb/usr/bin/zsh</string>
+		<string>-lc</string>
+		<string>cd /var/root/r1rpc &amp;&amp; exec /var/jb/usr/bin/python3 -u device_client.py --server https://your-host --group demo --id device-01</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>R1RPC_DEVICE_KEY</key>
+		<string>dk_xxxx</string>
+	</dict>
+	<key>UserName</key>
+	<string>root</string>
+	<key>POSIXSpawnType</key>
+	<string>Interactive</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>ExecuteAllowed</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/dev/null</string>
+	<key>StandardErrorPath</key>
+	<string>/dev/null</string>
+</dict>
+</plist>

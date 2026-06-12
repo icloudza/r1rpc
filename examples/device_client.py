@@ -20,22 +20,9 @@ r1rpc 设备端参考客户端（通用示例）。
 
 生产部署（重要）：
     设备「在线」= 这个进程活着。进程一旦退出，面板里设备立刻离线。
-    所以正式环境务必用进程管理器常驻 + 崩溃自动拉起，别用裸 `python ... &`：
-
-    Linux (systemd) — /etc/systemd/system/r1rpc-device.service：
-        [Service]
-        Environment=R1RPC_DEVICE_KEY=dk_xxxx
-        ExecStart=/usr/bin/python3 /opt/r1rpc/device_client.py \
-            --server https://your-host --group demo --id device-01
-        Restart=always
-        RestartSec=3
-        [Install]
-        WantedBy=multi-user.target
-        # systemctl enable --now r1rpc-device
-
-    macOS 用 launchd LaunchAgent（KeepAlive=true + RunAtLoad=true）同理。
-
-    本脚本已支持被 SIGTERM/SIGINT 优雅停止（关闭 WS 后退出），配合上述管理器即可。
+    所以正式环境务必用进程管理器常驻 + 崩溃自动拉起，别用裸 `python ... &`。
+    iOS 越狱(launchd) 的现成常驻模板见 examples/deploy/；其他环境机制类似。
+    本脚本已支持被 SIGTERM/SIGINT 优雅停止（关闭 WS 后退出），配合进程管理器即可。
 """
 import argparse
 import json

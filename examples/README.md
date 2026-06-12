@@ -19,6 +19,11 @@ python device_client.py --server http://127.0.0.1:9876 \
 
 要点：每个任务起独立线程执行，但所有 WebSocket 发送都过同一把锁——`websocket-client` 的 `send()` 非线程安全，并发写会把帧流写乱导致服务端断连。
 
+> **常驻部署**：设备「在线」= 客户端进程活着，正式环境务必用进程管理器常驻 + 崩溃自动拉起。
+> iOS 越狱(launchd) 的现成常驻模板见 [`deploy/`](deploy/)——
+> iOS 越狱有几个非踩不可的坑（frida 需 `zsh -lc` 包装拿注入上下文、日志要丢弃防撑爆存储），都写清了；
+> 其他环境（macOS launchd / Linux systemd / Android Magisk）机制类似，按需自套。
+
 ## caller.py —— 调用方
 
 从后端发起一次调用：
