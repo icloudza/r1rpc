@@ -96,6 +96,7 @@ type App struct {
 	presenceMu        sync.Mutex
 	lastPresenceFlush map[string]time.Time
 	persistCh         chan persistTask
+	ProbeHistory      *probeHistory
 }
 
 type InvokeRequest struct {
@@ -125,6 +126,7 @@ func New(cfg config.Config, st *store.Store) *App {
 		Hub:               rpc.NewHub(clientQueueSize, hubMaxInFlight),
 		lastPresenceFlush: map[string]time.Time{},
 		persistCh:         make(chan persistTask, queueSize),
+		ProbeHistory:      newProbeHistory(),
 	}
 }
 
@@ -163,6 +165,29 @@ func (a *App) StartBackgroundJobs(ctx context.Context) {
 				_ = a.Store.TrimAllRPCRequestScopes(cleanupCtx, a.Config.RawRequestKeepLatest)
 				_ = a.Store.CleanupOldMetrics(cleanupCtx, a.Config.AggregateRetentionDays)
 				cancel()
+			}
+		}
+	}()
+
+	go func() {
+		probeTicker := time.NewTicker(30 * time.Second)
+		defer probeTicker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-probeTicker.C:
+				a.ProbeHistory.Cleanup()
+				scanCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				groups, err := a.Store.ListGroups(scanCtx)
+				cancel()
+				if err != nil {
+					continue
+				}
+				for _, g := range groups {
+					online := a.Hub.GroupOnlineCount(g.GroupName)
+					a.ProbeHistory.RecordOnline(g.GroupName, online)
+				}
 			}
 		}
 	}()

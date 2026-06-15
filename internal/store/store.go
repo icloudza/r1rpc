@@ -1347,6 +1347,59 @@ func (s *Store) RealtimeBuckets(ctx context.Context, minutes int) ([]model.Realt
 	return out, nil
 }
 
+func (s *Store) RealtimeBucketsByGroup(ctx context.Context, minutes int) ([]model.GroupRealtimeBuckets, error) {
+	if minutes <= 0 || minutes > 360 {
+		minutes = 60
+	}
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT group_name,
+		       FLOOR(UNIX_TIMESTAMP(created_at)/60)*60 AS b,
+		       SUM(status = 'success') AS succ,
+		       SUM(status IN ('error','no_client','rejected')) AS fail,
+		       SUM(status = 'timeout') AS tout
+		FROM rpc_requests
+		WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+		GROUP BY group_name, b
+	`, minutes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type cnt struct{ s, f, t int64 }
+	gm := map[string]map[int64]cnt{}
+	for rows.Next() {
+		var group string
+		var b, succ, fail, tout int64
+		if err := rows.Scan(&group, &b, &succ, &fail, &tout); err != nil {
+			return nil, err
+		}
+		if gm[group] == nil {
+			gm[group] = map[int64]cnt{}
+		}
+		gm[group][b] = cnt{succ, fail, tout}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	end := time.Now().Truncate(time.Minute).Unix()
+	var result []model.GroupRealtimeBuckets
+	for group, m := range gm {
+		buckets := make([]model.RealtimeBucket, 0, minutes)
+		for i := minutes - 1; i >= 0; i-- {
+			ts := end - int64(i)*60
+			c := m[ts]
+			buckets = append(buckets, model.RealtimeBucket{
+				Label:   time.Unix(ts, 0).Format("15:04"),
+				Success: c.s,
+				Failed:  c.f,
+				Timeout: c.t,
+			})
+		}
+		result = append(result, model.GroupRealtimeBuckets{Group: group, Buckets: buckets})
+	}
+	return result, nil
+}
+
 func (s *Store) TrendMetrics(ctx context.Context, groupName, actionName, clientID string, days int) ([]model.TrendPoint, error) {
 	if days <= 0 || days > 30 {
 		days = 7

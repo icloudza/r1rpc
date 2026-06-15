@@ -56,6 +56,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/metrics/clients/{clientId}/daily", s.requireRole("admin", s.handleClientDailyMetrics))
 	mux.HandleFunc("GET /api/metrics/trends", s.requireRole("admin", s.handleTrendMetrics))
 	mux.HandleFunc("GET /api/metrics/realtime", s.requireRole("admin", s.handleRealtimeMetrics))
+	mux.HandleFunc("GET /api/health/probes", s.requireRole("admin", s.handleHealthProbes))
 	mux.HandleFunc("POST /api/client/login", s.handleClientLogin)
 	mux.HandleFunc("GET /api/client/ws", s.handleClientWS)
 	mux.HandleFunc("POST /api/client/result", s.requireRole("client", s.handleClientResult))
@@ -575,7 +576,32 @@ func (s *Server) handleRealtimeMetrics(w http.ResponseWriter, r *http.Request, c
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"buckets": buckets})
+	groups, err := s.App.Store.RealtimeBucketsByGroup(r.Context(), minutes)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"buckets": buckets, "groups": groups})
+}
+
+func (s *Server) handleHealthProbes(w http.ResponseWriter, r *http.Request, claims *auth.Claims) {
+	type groupProbe struct {
+		Group   string           `json:"group"`
+		Buckets []app.ProbeBucket `json:"buckets"`
+	}
+	groups, err := s.App.Store.ListGroups(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	result := make([]groupProbe, 0, len(groups))
+	for _, g := range groups {
+		result = append(result, groupProbe{
+			Group:   g.GroupName,
+			Buckets: s.App.ProbeHistory.Last60(g.GroupName),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"groups": result})
 }
 
 func (s *Server) handleClientLogin(w http.ResponseWriter, r *http.Request) {

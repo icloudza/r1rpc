@@ -41,25 +41,25 @@ const C = {
   latency: 'var(--violet-9)',
 }
 
-type RtBucket = { t: string; success: number; failed: number; timeout: number }
+type ProbeBucket = { t: string; online: number; healthy: number; total: number; maxLatMs: number }
+type GroupProbe = { group: string; buckets: ProbeBucket[] }
 
 export default function OverviewPage() {
   const trendsR = useFetch(() => get<{ items: TrendPoint[] }>('/api/metrics/trends?days=7'))
   const groupsR = useFetch(() => get<{ items: GroupInfo[] }>('/api/groups'))
   const devicesR = useFetch(() => get<{ items: Device[] }>('/api/devices'))
 
-  // 实时请求频谱：每 10s 轮询近 60 分钟的分钟桶
-  const [realtime, setRealtime] = useState<RtBucket[]>([])
+  const [probeData, setProbeData] = useState<GroupProbe[]>([])
   useEffect(() => {
     let alive = true
     const load = () =>
-      get<{ buckets: RtBucket[] }>('/api/metrics/realtime?minutes=60')
+      get<{ groups: GroupProbe[] }>('/api/health/probes')
         .then((d) => {
-          if (alive) setRealtime(d.buckets ?? [])
+          if (alive) setProbeData(d.groups ?? [])
         })
         .catch(() => {})
     load()
-    const id = setInterval(load, 10000)
+    const id = setInterval(load, 30000)
     return () => {
       alive = false
       clearInterval(id)
@@ -118,31 +118,56 @@ export default function OverviewPage() {
         </Flex>
       </Card>
 
-      {/* 趋势 */}
-      <Card size="2">
-        <PanelHead title="调用量 & 成功率趋势" subtitle="柱：调用量 ｜ 线：成功率" />
-        <Box mt="3" style={{ height: 200 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={trendData} margin={{ top: 6, right: 6, bottom: 0, left: -20 }}>
-              <defs>
-                <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={C.accent} stopOpacity={0.95} />
-                  <stop offset="100%" stopColor={C.accent} stopOpacity={0.45} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid vertical={false} stroke={gridStroke} strokeDasharray="3 3" />
-              <XAxis dataKey="date" tickLine={false} axisLine={false} tick={axisTick} dy={4} />
-              <YAxis yAxisId="left" allowDecimals={false} tickLine={false} axisLine={false} tick={axisTick} width={36} />
-              <YAxis yAxisId="right" orientation="right" domain={[0, 100]} unit="%" tickLine={false} axisLine={false} tick={axisTick} width={40} />
-              <Tooltip cursor={{ fill: 'var(--gray-a3)' }} contentStyle={tooltipStyle} labelStyle={labelStyle} />
-              <Bar yAxisId="left" dataKey="调用量" fill="url(#barFill)" radius={[5, 5, 0, 0]} maxBarSize={40} {...noAnim} />
-              <Line yAxisId="right" type="monotone" dataKey="成功率" stroke={C.success} strokeWidth={2} unit="%" dot={{ r: 3, fill: C.success, strokeWidth: 0 }} activeDot={{ r: 5 }} connectNulls {...noAnim} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </Box>
-      </Card>
+      {/* 趋势(左) + 系统健康(右，独立滚动) */}
+      {/* 趋势(左) + 系统健康(右，内容自适应，超出左侧高度才滚) */}
+      <Flex gap="3" align="stretch">
+        <Card size="2" style={{ flex: 1, minWidth: 0 }}>
+          <PanelHead title="调用量 & 成功率趋势" subtitle="柱：调用量 ｜ 线：成功率" />
+          <Box mt="3" style={{ height: 240 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={trendData} margin={{ top: 6, right: 6, bottom: 0, left: -20 }}>
+                <defs>
+                  <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={C.accent} stopOpacity={0.95} />
+                    <stop offset="100%" stopColor={C.accent} stopOpacity={0.45} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} stroke={gridStroke} strokeDasharray="3 3" />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={axisTick} dy={4} />
+                <YAxis yAxisId="left" allowDecimals={false} tickLine={false} axisLine={false} tick={axisTick} width={36} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} unit="%" tickLine={false} axisLine={false} tick={axisTick} width={40} />
+                <Tooltip cursor={{ fill: 'var(--gray-a3)' }} contentStyle={tooltipStyle} labelStyle={labelStyle} />
+                <Bar yAxisId="left" dataKey="调用量" fill="url(#barFill)" radius={[5, 5, 0, 0]} maxBarSize={40} {...noAnim} />
+                <Line yAxisId="right" type="monotone" dataKey="成功率" stroke={C.success} strokeWidth={2} unit="%" dot={{ r: 3, fill: C.success, strokeWidth: 0 }} activeDot={{ r: 5 }} connectNulls {...noAnim} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </Box>
+        </Card>
+        <Card size="2" style={{ width: 645, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Flex align="baseline" justify="between" mb="2" style={{ flexShrink: 0 }}>
+            <PanelHead title="系统健康" subtitle="近 60 分钟 · 30s 刷新" />
+            <Flex gap="3" style={{ fontSize: 11, color: 'var(--gray-9)' }}>
+              <Flex align="center" gap="1"><Box style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green-9)' }} /> 正常</Flex>
+              <Flex align="center" gap="1"><Box style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--amber-9)' }} /> 降级</Flex>
+              <Flex align="center" gap="1"><Box style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--red-9)' }} /> 异常</Flex>
+              <Flex align="center" gap="1"><Box style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--gray-6)' }} /> 无数据</Flex>
+            </Flex>
+          </Flex>
+          <Box style={{ height: 248, overflow: 'auto' }}>
+            {groups.length === 0 ? (
+              <Flex align="center" justify="center" py="6"><Text size="2" color="gray">暂无分组</Text></Flex>
+            ) : (
+              <Flex direction="column" gap="4">
+                {groups.map((g) => (
+                  <HealthRow key={g.group} group={g} buckets={(probeData.find((r) => r.group === g.group)?.buckets) ?? []} />
+                ))}
+              </Flex>
+            )}
+          </Box>
+        </Card>
+      </Flex>
 
-      {/* 组合卡 1：状态分布 + 平均延迟 */}
+      {/* 状态分布 + 状态构成 + 分组调用量 三列 */}
       <Card size="2">
         <Flex gap="4">
           <Panel title="请求状态分布" subtitle="近 7 天累计" height={190} flex={1} empty={statusPie.length === 0}>
@@ -157,25 +182,7 @@ export default function OverviewPage() {
             </PieChart>
           </Panel>
           <VDivider />
-          <Panel title="实时请求频谱" subtitle="每分钟 · 近 60 分钟 · 10s 刷新" height={190} flex={3} empty={realtime.length === 0}>
-            <BarChart data={realtime} margin={{ top: 6, right: 6, bottom: 0, left: -20 }} barCategoryGap="12%" barGap={0}>
-              <CartesianGrid vertical={false} stroke={gridStroke} strokeDasharray="3 3" />
-              <XAxis dataKey="t" tickLine={false} axisLine={false} tick={axisTick} interval={9} minTickGap={8} dy={4} />
-              <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={axisTick} width={36} />
-              <Tooltip cursor={{ fill: 'var(--gray-a3)' }} contentStyle={tooltipStyle} labelStyle={labelStyle} />
-              <Legend iconType="circle" formatter={(v) => <span style={{ color: 'var(--gray-11)', fontSize: 11 }}>{v}</span>} />
-              <Bar dataKey="success" name="成功" stackId="s" fill={C.success} maxBarSize={7} {...noAnim} />
-              <Bar dataKey="failed" name="失败" stackId="s" fill={C.failed} maxBarSize={7} {...noAnim} />
-              <Bar dataKey="timeout" name="超时" stackId="s" fill={C.timeout} maxBarSize={7} radius={[2, 2, 0, 0]} {...noAnim} />
-            </BarChart>
-          </Panel>
-        </Flex>
-      </Card>
-
-      {/* 组合卡 2：状态构成 + 分组调用量 */}
-      <Card size="2">
-        <Flex gap="4">
-          <Panel title="每日请求状态构成" subtitle="成功 / 失败 / 超时" height={190}>
+          <Panel title="每日请求状态构成" subtitle="成功 / 失败 / 超时" height={190} flex={1}>
             <BarChart data={trendData} margin={{ top: 6, right: 6, bottom: 0, left: -20 }}>
               <CartesianGrid vertical={false} stroke={gridStroke} strokeDasharray="3 3" />
               <XAxis dataKey="date" tickLine={false} axisLine={false} tick={axisTick} dy={4} />
@@ -188,7 +195,7 @@ export default function OverviewPage() {
             </BarChart>
           </Panel>
           <VDivider />
-          <Panel title="分组调用量" subtitle="近 7 天 · Top 6" height={190} empty={groupBar.length === 0}>
+          <Panel title="分组调用量" subtitle="近 7 天 · Top 6" height={190} flex={1} empty={groupBar.length === 0}>
             <BarChart data={groupBar} layout="vertical" margin={{ top: 4, right: 16, bottom: 0, left: 8 }}>
               <CartesianGrid horizontal={false} stroke={gridStroke} strokeDasharray="3 3" />
               <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={axisTick} />
@@ -251,6 +258,74 @@ function Panel({
             {children as ReactElement}
           </ResponsiveContainer>
         )}
+      </Box>
+    </Box>
+  )
+}
+
+function HealthRow({ group, buckets }: { group: GroupInfo; buckets: ProbeBucket[] }) {
+  const SLOW_THRESHOLD = 500
+  const totalProbes = buckets.reduce((s, b) => s + b.total, 0)
+  const healthyProbes = buckets.reduce((s, b) => s + b.healthy, 0)
+  const uptime = totalProbes > 0 ? Math.round((healthyProbes / totalProbes) * 1000) / 10 : null
+
+  const recent5 = buckets.slice(-5)
+  const recentTotal = recent5.reduce((s, b) => s + b.total, 0)
+  const recentHealthy = recent5.reduce((s, b) => s + b.healthy, 0)
+  const recentFailed = recentTotal - recentHealthy
+
+  let badge: { label: string; color: 'green' | 'red' | 'amber' | 'gray' }
+  if (!group.enabled) {
+    badge = { label: '已禁用', color: 'gray' }
+  } else if (group.onlineDevices === 0) {
+    badge = group.totalDevices === 0 ? { label: '无设备', color: 'gray' } : { label: '离线', color: 'red' }
+  } else if (recentFailed > 0) {
+    badge = { label: '异常', color: 'red' }
+  } else if (recent5.some((b) => b.total > 0 && b.maxLatMs > SLOW_THRESHOLD)) {
+    badge = { label: '降级', color: 'amber' }
+  } else {
+    badge = { label: '正常', color: 'green' }
+  }
+
+  const pills = (buckets.length > 0 ? buckets : Array.from({ length: 60 }, (): ProbeBucket => ({ t: '', online: 0, healthy: 0, total: 0, maxLatMs: 0 }))).map((b, i, arr) => {
+    if (b.total > 0 && b.healthy < b.total) return 'var(--red-9)'
+    if (b.total > 0 && b.healthy === b.total && b.maxLatMs > SLOW_THRESHOLD) return 'var(--amber-9)'
+    if (b.total > 0 && b.healthy === b.total) return 'var(--green-9)'
+    // 桶无探针数据：如果之前曾有在线设备（说明后台扫描写过 online>0）但现在掉到 0 → 红色（离线）
+    // 否则灰色（无数据/空分组/服务刚启动还没扫描）
+    const hadOnline = arr.slice(0, i).some((prev) => prev.online > 0 || prev.total > 0)
+    if (hadOnline && b.online === 0) return 'var(--red-9)'
+    return 'var(--gray-5)'
+  })
+  const timeLabels = buckets.length > 0 ? [buckets[0].t, buckets[buckets.length - 1].t] : ['', '']
+
+  return (
+    <Box>
+      <Flex align="center" justify="between" mb="1">
+        <Flex align="center" gap="2">
+          <Text weight="medium" size="2">{group.displayName || group.group}</Text>
+          <Box style={{ fontSize: 11, padding: '1px 7px', borderRadius: 6, fontWeight: 500, background: `var(--${badge.color}-3)`, color: `var(--${badge.color}-11)` }}>
+            {badge.label}
+          </Box>
+        </Flex>
+        <Flex gap="3" style={{ fontSize: 12, color: 'var(--gray-9)' }}>
+          <span>设备 {group.onlineDevices}/{group.totalDevices}</span>
+          {uptime !== null && group.onlineDevices > 0 && <span style={{ color: uptime >= 99 ? 'var(--green-11)' : uptime >= 90 ? 'var(--amber-11)' : 'var(--red-11)' }}>{uptime}% 健康</span>}
+        </Flex>
+      </Flex>
+      <Box style={{ background: 'var(--gray-a2)', borderRadius: 8, padding: '6px 8px' }}>
+        <Flex gap="1" style={{ height: 26, alignItems: 'stretch' }}>
+          {pills.map((color, i) => (
+            <Box
+              key={i}
+              title={buckets[i] ? `${buckets[i].t} — 探针 ${buckets[i].healthy}/${buckets[i].total} · 在线 ${buckets[i].online}${buckets[i].maxLatMs > 0 ? ` · ${buckets[i].maxLatMs}ms` : ''}` : ''}
+              style={{ flex: 1, minWidth: 0, borderRadius: 3, background: color, opacity: color === 'var(--gray-5)' ? 0.5 : 1, transition: 'opacity .15s' }}
+            />
+          ))}
+        </Flex>
+        <Flex justify="between" mt="1" style={{ fontSize: 11, color: 'var(--gray-8)' }}>
+          <span>{timeLabels[0]}</span><span>{timeLabels[1]}</span>
+        </Flex>
       </Box>
     </Box>
   )

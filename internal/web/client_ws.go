@@ -141,17 +141,54 @@ func (s *Server) handleClientWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	// 探针：每 30s 下发 {type:"probe"}，客户端若支持会回 {type:"probeAck"}。
+	// 旧客户端会静默忽略（它们只认 type:"job"），不影响已部署设备。
+	probePending := make(chan time.Time, 1)
+	sendProbe := func() {
+		// 发新探针前检查上次是否超时（probePending 还有未消费的值 = 上次没收到 ack）
+		select {
+		case oldSent := <-probePending:
+			latencyMs := time.Since(oldSent).Milliseconds()
+			s.App.Hub.RecordProbe(claims.ClientID, false, latencyMs)
+			groupOnline := s.App.Hub.GroupOnlineCount(claims.Group)
+			s.App.ProbeHistory.Record(claims.Group, groupOnline, false, latencyMs)
+		default:
+		}
+		// 只在 outCh 入队成功时才写 probePending（被丢弃的探针不算已发出）
+		msg := wsEnvelope{Type: "probe", Time: time.Now().Format(time.RFC3339Nano)}
+		select {
+		case outCh <- msg:
+			select {
+			case probePending <- time.Now():
+			default:
+			}
+		default:
+		}
+	}
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		sendProbe()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sendProbe()
+			}
+		}
+	}()
+
 	writerDone := make(chan error, 1)
 	go func() {
 		writerDone <- s.clientWSWriterLoop(ctx, claims, conn)
 	}()
-	// ping/pong 是唯一的保活判定，完全独立于 RPC 应用消息；pong 超时即主动拆连接。
 	pingDone := make(chan error, 1)
 	go func() {
 		pingDone <- s.clientWSPingLoop(ctx, conn, claims.ClientID, cancel)
 	}()
 
-	readerErr := s.clientWSReaderLoop(ctx, claims, conn, ip, outCh)
+	readerErr := s.clientWSReaderLoop(ctx, claims, conn, ip, outCh, probePending)
 	cancel()
 	writerErr := <-writerDone
 	pingErr := <-pingDone
@@ -281,7 +318,7 @@ func (s *Server) clientWSPingLoop(ctx context.Context, conn *websocket.Conn, cli
 	}
 }
 
-func (s *Server) clientWSReaderLoop(ctx context.Context, claims *auth.Claims, conn *websocket.Conn, ip string, outCh chan<- wsEnvelope) error {
+func (s *Server) clientWSReaderLoop(ctx context.Context, claims *auth.Claims, conn *websocket.Conn, ip string, outCh chan<- wsEnvelope, probePending <-chan time.Time) error {
 	for {
 		// 不再用"应用消息读超时"判活：判活交给 ping/pong（clientWSPingLoop）。
 		// 这样再大的 RPC 数据流量/拥塞都不会误杀健康连接——保活与调用彻底解耦。
@@ -300,6 +337,15 @@ func (s *Server) clientWSReaderLoop(ctx context.Context, claims *auth.Claims, co
 			continue
 		}
 		switch envelope.Type {
+		case "probeAck":
+			select {
+			case sentAt := <-probePending:
+				latencyMs := time.Since(sentAt).Milliseconds()
+				s.App.Hub.RecordProbe(claims.ClientID, true, latencyMs)
+				groupSessions := s.App.Hub.GroupOnlineCount(claims.Group)
+				s.App.ProbeHistory.Record(claims.Group, groupSessions, true, latencyMs)
+			default:
+			}
 		case "heartbeat":
 			enqueueClientReply(outCh, wsEnvelope{Type: "heartbeatAck", Time: time.Now().Format(time.RFC3339)})
 		case "result":

@@ -8,7 +8,7 @@ import type { User } from '../types'
 
 export default function LoginPage() {
   const nav = useNavigate()
-  const [username, setUsername] = useState('admin')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -50,7 +50,7 @@ export default function LoginPage() {
               <Text size="2" mb="1" as="div" weight="medium">
                 用户名
               </Text>
-              <TextField.Root value={username} onChange={(e) => setUsername(e.target.value)} placeholder="admin" size="3" />
+              <TextField.Root value={username} onChange={(e) => setUsername(e.target.value)} placeholder="请输入用户名" size="3" />
             </label>
             <label>
               <Text size="2" mb="1" as="div" weight="medium">
@@ -60,7 +60,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••"
+                placeholder="请输入密码"
                 size="3"
               />
             </label>

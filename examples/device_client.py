@@ -3,7 +3,8 @@
 r1rpc 设备端参考客户端（通用示例）。
 
 它做的事：用 device key 登录拿到 WebSocket 地址 → 连上 → 上报本机支持的 action →
-常驻接收任务、并发执行、回传结果，断线自动重连。
+常驻接收任务、并发执行、回传结果，断线自动重连。同时自动响应服务端的健康探针
+（{type:"probe"} → {type:"probeAck"}），面板的「系统健康」据此实时显示设备可达性。
 
 这个示例自带两个无需真机的 handler（ping / echo），所以连上 r1rpc 就能跑通整条链路。
 要接真实能力（frida hook、算签名等），把 handler 换成你的实现即可。
@@ -137,8 +138,9 @@ class R1RPCClient:
                     if not raw:
                         break
                     msg = json.loads(raw)
-                    if msg.get("type") == "job" and msg.get("job"):
-                        # 每个任务一个线程，不阻塞接收循环（也别忘了发送已加锁）
+                    if msg.get("type") == "probe":
+                        self._send({"type": "probeAck"})
+                    elif msg.get("type") == "job" and msg.get("job"):
                         threading.Thread(target=self._handle_job, args=(msg["job"],), daemon=True).start()
             except Exception as e:
                 if not self._running:

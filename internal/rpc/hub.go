@@ -32,15 +32,19 @@ type JobResult struct {
 }
 
 type ClientSession struct {
-	ClientID      string
-	Group         string
-	UserID        int64
-	Platform      string
-	LastSeenAt    time.Time
-	Pending       *jobQueue
-	MaxInFlight   int
-	InFlight      int
-	dispatchReady chan struct{}
+	ClientID       string
+	Group          string
+	UserID         int64
+	Platform       string
+	LastSeenAt     time.Time
+	Pending        *jobQueue
+	MaxInFlight    int
+	InFlight       int
+	dispatchReady  chan struct{}
+	ProbeSupported bool
+	ProbeOk        bool
+	ProbeLatencyMs int64
+	ProbeAt        time.Time
 }
 
 type jobQueue struct {
@@ -245,6 +249,23 @@ func (h *Hub) Touch(clientID string) {
 	if session, ok := h.sessions[clientID]; ok {
 		session.LastSeenAt = time.Now()
 	}
+}
+
+func (h *Hub) RecordProbe(clientID string, ok bool, latencyMs int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if session, found := h.sessions[clientID]; found {
+		session.ProbeSupported = true
+		session.ProbeOk = ok
+		session.ProbeLatencyMs = latencyMs
+		session.ProbeAt = time.Now()
+	}
+}
+
+func (h *Hub) GroupOnlineCount(group string) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.groups[group])
 }
 
 func (h *Hub) Session(clientID string) (*ClientSession, bool) {

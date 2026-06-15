@@ -110,6 +110,11 @@ type RealtimeBucket struct {
 	Timeout int64  `json:"timeout"`
 }
 
+type GroupRealtimeBuckets struct {
+	Group   string           `json:"group"`
+	Buckets []RealtimeBucket `json:"buckets"`
+}
+
 type TrendPoint struct {
 	StatDate        string  `json:"statDate"`
 	TotalRequests   int64   `json:"totalRequests"`
