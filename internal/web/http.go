@@ -705,7 +705,7 @@ func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, _, _, err := s.App.InvokeRPC(r.Context(), claims, groupName, actionName, req)
+	result, _, actualClientID, err := s.App.InvokeRPC(r.Context(), claims, groupName, actionName, req)
 	if err != nil {
 		httpCode := http.StatusBadGateway
 		switch {
@@ -724,8 +724,19 @@ func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isOK := strings.EqualFold(result.Status, "success") && strings.TrimSpace(result.Error) == ""
-	// data 直接为设备返回的 payload；success/msg 反映调用结果
-	writeEnvelope(w, http.StatusOK, isOK, result.Error, jsonBodyOrEmpty(result.Payload))
+	var devicePayload any
+	if len(result.Payload) > 0 {
+		_ = json.Unmarshal(result.Payload, &devicePayload)
+	}
+	resp := map[string]any{"clientId": actualClientID}
+	if m, ok := devicePayload.(map[string]any); ok {
+		for k, v := range m {
+			resp[k] = v
+		}
+	} else if devicePayload != nil {
+		resp["payload"] = devicePayload
+	}
+	writeEnvelope(w, http.StatusOK, isOK, result.Error, resp)
 }
 
 // authenticateInvokeRequest 对外调用鉴权（鉴权模式按分组决定）：

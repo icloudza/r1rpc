@@ -126,7 +126,7 @@ func New(cfg config.Config, st *store.Store) *App {
 		Hub:               rpc.NewHub(clientQueueSize, hubMaxInFlight),
 		lastPresenceFlush: map[string]time.Time{},
 		persistCh:         make(chan persistTask, queueSize),
-		ProbeHistory:      newProbeHistory(),
+		ProbeHistory:      newProbeHistory(st),
 	}
 }
 

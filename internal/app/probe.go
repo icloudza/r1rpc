@@ -1,12 +1,15 @@
 package app
 
 import (
+	"context"
 	"sync"
 	"time"
+
+	"r1rpc/internal/store"
 )
 
 type ProbeBucket struct {
-	Minute   int64 `json:"-"`
+	Minute   int64  `json:"-"`
 	Label    string `json:"t"`
 	Online   int    `json:"online"`
 	Healthy  int    `json:"healthy"`
@@ -17,16 +20,50 @@ type ProbeBucket struct {
 type probeHistory struct {
 	mu      sync.Mutex
 	buckets map[string]map[int64]*ProbeBucket // group -> minute_ts -> bucket
+	store   *store.Store
 }
 
-func newProbeHistory() *probeHistory {
-	return &probeHistory{buckets: map[string]map[int64]*ProbeBucket{}}
+func newProbeHistory(st *store.Store) *probeHistory {
+	ph := &probeHistory{
+		buckets: map[string]map[int64]*ProbeBucket{},
+		store:   st,
+	}
+	ph.loadFromDB()
+	return ph
+}
+
+func (ph *probeHistory) loadFromDB() {
+	if ph.store == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	rows, err := ph.store.LoadProbeBuckets(ctx, 65)
+	if err != nil {
+		return
+	}
+	ph.mu.Lock()
+	defer ph.mu.Unlock()
+	for _, r := range rows {
+		gm := ph.buckets[r.GroupName]
+		if gm == nil {
+			gm = map[int64]*ProbeBucket{}
+			ph.buckets[r.GroupName] = gm
+		}
+		gm[r.MinuteTS] = &ProbeBucket{
+			Minute:   r.MinuteTS,
+			Label:    time.Unix(r.MinuteTS, 0).Format("15:04"),
+			Online:   r.Online,
+			Healthy:  r.Healthy,
+			Total:    r.Total,
+			MaxLatMs: r.MaxLatMs,
+		}
+	}
 }
 
 func (ph *probeHistory) Record(group string, online int, ok bool, latencyMs int64) {
 	now := time.Now().Truncate(time.Minute).Unix()
 	ph.mu.Lock()
-	defer ph.mu.Unlock()
 	gm := ph.buckets[group]
 	if gm == nil {
 		gm = map[int64]*ProbeBucket{}
@@ -47,12 +84,24 @@ func (ph *probeHistory) Record(group string, online int, ok bool, latencyMs int6
 	if latencyMs > b.MaxLatMs {
 		b.MaxLatMs = latencyMs
 	}
+	ph.mu.Unlock()
+
+	if ph.store != nil {
+		h := 0
+		if ok {
+			h = 1
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = ph.store.UpsertProbeBucket(ctx, store.ProbeBucketRow{
+			GroupName: group, MinuteTS: now, Online: online, Healthy: h, Total: 1, MaxLatMs: latencyMs,
+		})
+		cancel()
+	}
 }
 
 func (ph *probeHistory) RecordOnline(group string, online int) {
 	now := time.Now().Truncate(time.Minute).Unix()
 	ph.mu.Lock()
-	defer ph.mu.Unlock()
 	gm := ph.buckets[group]
 	if gm == nil {
 		gm = map[int64]*ProbeBucket{}
@@ -65,6 +114,13 @@ func (ph *probeHistory) RecordOnline(group string, online int) {
 	}
 	if online > b.Online {
 		b.Online = online
+	}
+	ph.mu.Unlock()
+
+	if ph.store != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = ph.store.UpsertProbeBucketOnline(ctx, group, now, online)
+		cancel()
 	}
 }
 
@@ -88,7 +144,6 @@ func (ph *probeHistory) Last60(group string) []ProbeBucket {
 func (ph *probeHistory) Cleanup() {
 	cutoff := time.Now().Add(-65 * time.Minute).Truncate(time.Minute).Unix()
 	ph.mu.Lock()
-	defer ph.mu.Unlock()
 	for group, gm := range ph.buckets {
 		for ts := range gm {
 			if ts < cutoff {
@@ -98,5 +153,12 @@ func (ph *probeHistory) Cleanup() {
 		if len(gm) == 0 {
 			delete(ph.buckets, group)
 		}
+	}
+	ph.mu.Unlock()
+
+	if ph.store != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = ph.store.CleanupProbeBuckets(ctx, 65)
+		cancel()
 	}
 }

@@ -85,5 +85,13 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
     INDEX idx_daily_metrics_client_date (client_id, stat_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-
-
+CREATE TABLE IF NOT EXISTS probe_buckets (
+    group_name VARCHAR(128) NOT NULL,
+    minute_ts BIGINT NOT NULL,
+    online INT NOT NULL DEFAULT 0,
+    healthy INT NOT NULL DEFAULT 0,
+    total INT NOT NULL DEFAULT 0,
+    max_lat_ms BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (group_name, minute_ts),
+    INDEX idx_probe_buckets_ts (minute_ts)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -19,7 +19,7 @@ import { useFetch } from '../lib/useFetch'
 import { notify } from '../lib/toast'
 import { cnError } from '../lib/errors'
 import { prettyJson } from '../lib/format'
-import type { GroupInfo } from '../types'
+import type { GroupInfo, Device } from '../types'
 
 interface Result {
   ok: boolean
@@ -30,6 +30,8 @@ interface Result {
 export default function InvokePage() {
   const groupsR = useFetch(() => get<{ items: GroupInfo[] }>('/api/groups'))
   const groups = groupsR.data?.items ?? []
+  const devicesR = useFetch(() => get<{ items: Device[] }>('/api/devices'))
+  const devices = devicesR.data?.items ?? []
 
   const [group, setGroup] = useState('')
   const [action, setAction] = useState('')
@@ -52,6 +54,7 @@ export default function InvokePage() {
     let alive = true
     setAction('')
     setCustomAction(false)
+    setClientId('')
     get<{ actions: string[] }>(`/api/groups/${encodeURIComponent(effGroup)}/actions`)
       .then((d) => {
         if (alive) setActionOptions(d.actions || [])
@@ -202,7 +205,18 @@ export default function InvokePage() {
                 <Text size="2" mb="1" as="div" weight="medium">
                   指定客户端（可选）
                 </Text>
-                <TextField.Root value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="留空自动调度" />
+                <Select.Root value={clientId} onValueChange={(v) => setClientId(v === '__auto__' ? '' : v)}>
+                  <Select.Trigger placeholder="自动调度" style={{ width: '100%' }} />
+                  <Select.Content>
+                    <Select.Item value="__auto__">自动调度</Select.Item>
+                    {devices.filter((d) => d.group === effGroup && d.status === 'online').length > 0 && <Select.Separator />}
+                    {devices.filter((d) => d.group === effGroup && d.status === 'online').map((d) => (
+                      <Select.Item key={d.clientId} value={d.clientId}>
+                        {d.clientId}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Root>
               </label>
               <label>
                 <Text size="2" mb="1" as="div" weight="medium">

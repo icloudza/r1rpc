@@ -1475,3 +1475,61 @@ func configureDBSession(ctx context.Context, db *sql.DB, cfg config.Config) erro
 	_, err := db.ExecContext(ctx, "SET time_zone = ?", cfg.TimeZoneOffsetString())
 	return err
 }
+
+type ProbeBucketRow struct {
+	GroupName string
+	MinuteTS  int64
+	Online    int
+	Healthy   int
+	Total     int
+	MaxLatMs  int64
+}
+
+func (s *Store) UpsertProbeBucket(ctx context.Context, b ProbeBucketRow) error {
+	_, err := s.DB.ExecContext(ctx, `
+		INSERT INTO probe_buckets (group_name, minute_ts, online, healthy, total, max_lat_ms)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+			online = GREATEST(online, VALUES(online)),
+			healthy = healthy + VALUES(healthy),
+			total = total + VALUES(total),
+			max_lat_ms = GREATEST(max_lat_ms, VALUES(max_lat_ms))
+	`, b.GroupName, b.MinuteTS, b.Online, b.Healthy, b.Total, b.MaxLatMs)
+	return err
+}
+
+func (s *Store) UpsertProbeBucketOnline(ctx context.Context, groupName string, minuteTS int64, online int) error {
+	_, err := s.DB.ExecContext(ctx, `
+		INSERT INTO probe_buckets (group_name, minute_ts, online)
+		VALUES (?, ?, ?)
+		ON DUPLICATE KEY UPDATE online = GREATEST(online, VALUES(online))
+	`, groupName, minuteTS, online)
+	return err
+}
+
+func (s *Store) LoadProbeBuckets(ctx context.Context, minutes int) ([]ProbeBucketRow, error) {
+	cutoff := time.Now().Add(-time.Duration(minutes+1) * time.Minute).Truncate(time.Minute).Unix()
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT group_name, minute_ts, online, healthy, total, max_lat_ms
+		FROM probe_buckets WHERE minute_ts >= ?
+	`, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []ProbeBucketRow
+	for rows.Next() {
+		var r ProbeBucketRow
+		if err := rows.Scan(&r.GroupName, &r.MinuteTS, &r.Online, &r.Healthy, &r.Total, &r.MaxLatMs); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) CleanupProbeBuckets(ctx context.Context, minutes int) error {
+	cutoff := time.Now().Add(-time.Duration(minutes+5) * time.Minute).Truncate(time.Minute).Unix()
+	_, err := s.DB.ExecContext(ctx, "DELETE FROM probe_buckets WHERE minute_ts < ?", cutoff)
+	return err
+}
