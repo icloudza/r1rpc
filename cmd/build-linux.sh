@@ -41,6 +41,12 @@ echo "==> [2/4] 构建前端（React 面板 go:embed 进二进制）"
 if [[ "$SKIP_WEB" -eq 1 ]]; then
   echo "    跳过（--skip-web，使用已 embed 的 internal/web/ui）"
 elif [[ -d "$ROOT/web" ]] && command -v npm >/dev/null 2>&1; then
+  NODE_VER=$(node -v 2>/dev/null | sed 's/^v//' | cut -d. -f1)
+  if [[ -z "$NODE_VER" ]] || [[ "$NODE_VER" -lt 18 ]]; then
+    echo "    ❌ Node.js 18+ 必需（当前: $(node -v 2>/dev/null || echo '未安装')）。Vite 依赖 Web Crypto API，低版本会报错。" >&2
+    echo "    请升级 Node 后重试，或 --skip-web 跳过前端构建（使用已 embed 的 ui）。" >&2
+    exit 1
+  fi
   ( cd "$ROOT/web" && npm run build )
 else
   echo "    跳过：未找到 web 目录或 npm（如需最新面板请装 Node 后重跑）"
