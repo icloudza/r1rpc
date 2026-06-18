@@ -81,8 +81,11 @@ export default function InvokePage() {
     const g = effGroup || '{group}'
     const a = action || '{action}'
     const keyHeader = mode === 'apikey' ? `\\\n  -H "X-API-Key: ${apiKey || '你的key'}"` : ''
-    return `curl -X POST "${base}/rpc/${g}/${a}"${keyHeader} \\\n  -H "Content-Type: application/json" \\\n  -d '${payload || '{}'}'`
-  }, [effGroup, action, payload, mode, apiKey])
+    let parsed: unknown = {}
+    try { parsed = JSON.parse(payload || '{}') } catch { /* 不合法时用空对象 */ }
+    const body = JSON.stringify({ payload: parsed, timeoutSeconds: Number(timeout) || 15 })
+    return `curl -X POST "${base}/rpc/${g}/${a}"${keyHeader} \\\n  -H "Content-Type: application/json" \\\n  -d '${body}'`
+  }, [effGroup, action, payload, mode, apiKey, timeout])
 
   async function invoke() {
     if (!effGroup) {

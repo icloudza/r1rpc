@@ -38,6 +38,23 @@ const statusCn: Record<string, string> = {
   stale: '不活跃',
 }
 
+function copyToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text))
+  } else {
+    fallbackCopy(text)
+  }
+}
+function fallbackCopy(text: string) {
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.cssText = 'position:fixed;opacity:0'
+  document.body.appendChild(ta)
+  ta.select()
+  document.execCommand('copy')
+  document.body.removeChild(ta)
+}
+
 export default function GroupsPage() {
   const { data, loading, reload } = useFetch(() => get<{ items: GroupInfo[] }>('/api/groups'))
   const groups = data?.items ?? []
@@ -168,7 +185,7 @@ function DeviceKeyCell({ group, onRotated }: { group: GroupInfo; onRotated: () =
 
   function copy() {
     if (!key) return
-    navigator.clipboard?.writeText(key)
+    copyToClipboard(key)
     notify.success('设备密钥已复制')
   }
 
@@ -228,7 +245,7 @@ function AuthCell({ group, onRotated }: { group: GroupInfo; onRotated: () => voi
 
   function copy() {
     if (!key) return
-    navigator.clipboard?.writeText(key)
+    copyToClipboard(key)
     notify.success('API Key 已复制')
   }
 
