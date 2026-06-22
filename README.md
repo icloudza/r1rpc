@@ -10,6 +10,7 @@
 
 > 🙏 **致谢**：r1rpc 基于 [@manyuegong33](https://github.com/manyuegong33) 的 [r0rpc](https://github.com/manyuegong33/r0rpc) 重构而来——核心架构与中继协议的思路源自原作者，本项目在其基础上重写了后端、配置、面板与部署。特别鸣谢原作者的开源工作。
 
+> ☁️ [雨云，价格实惠，性价比极高的服务器供应商，嘎嘎顶，牛大了，我的自己的 rpc 也用这个～～](https://www.rainyun.com/Njc3NjUw_)
 <p align="center">
   <img src="docs/flowchart.png" alt="r1rpc 架构流程" width="680">
 </p>
